@@ -1,0 +1,37 @@
+# Was NICHT auf GitHub gehört
+# ============================
+
+# Gebaute Programme - die gehören in ein Release, nicht ins Repository
+dist/
+build/
+.flet/
+storage/
+Ausgabe/
+*.spec
+*.msi
+*.wxs
+*.zip
+Schulhelfer_Setup.exe
+
+# Geheimnisse. Falls du je einen Schlüssel in eine Datei schreibst,
+# darf sie hier auf keinen Fall fehlen.
+.env
+*.key
+konfig.json
+
+# Persönliche Daten aus dem Betrieb
+woerter.json
+protokoll.txt
+Meine_Woerter.html
+Meine_Woerterliste.txt
+
+# Python-Zeug
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Betriebssystem-Krempel
+Thumbs.db
+desktop.ini
+.DS_Store
