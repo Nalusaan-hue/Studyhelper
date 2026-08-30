@@ -1,0 +1,11 @@
+# Diese Pakete packt "flet build" mit ins Programm.
+# Ohne diese Datei fehlen sie im gebauten Programm und es bricht beim
+# Start mit "ModuleNotFoundError" ab.
+
+flet==0.86.5
+google-genai>=2.0.0
+pillow>=10.0.0
+pystray>=0.19.5
+
+# pystray braucht diese beiden, zieht sie aber nicht immer selbst mit
+six>=1.16.0

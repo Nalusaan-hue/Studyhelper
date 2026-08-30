@@ -11,6 +11,7 @@ Starten:   flet run schulhelfer_flet.py
 Bauen:     flet build windows
 """
 
+import os
 import queue
 import threading
 import time
@@ -786,6 +787,29 @@ def main(seite: ft.Page):
                                  tooltip=t("menue_einstellungen"),
                                  on_click=einstellungen_oeffnen),
                    "menue_einstellungen", "tooltip"),
+            # Dieses Menue ist der Rueckweg, falls das Tray-Symbol fehlt.
+            # Ohne es kaeme man nicht mehr aus dem Programm heraus.
+            ft.PopupMenuButton(items=[
+                merken(ft.PopupMenuItem(
+                    content=t("menue_woerter"),
+                    on_click=lambda e: ansicht_wechseln(1)),
+                    "menue_woerter", "content"),
+                merken(ft.PopupMenuItem(
+                    content=t("menue_hinweis"),
+                    on_click=lambda e: hinweis_zeigen()),
+                    "menue_hinweis", "content"),
+                merken(ft.PopupMenuItem(
+                    content=t("menue_update"),
+                    on_click=lambda e: threading.Thread(
+                        target=kern.update_pruefen, args=(False,),
+                        daemon=True).start()),
+                    "menue_update", "content"),
+                ft.PopupMenuItem(),
+                merken(ft.PopupMenuItem(
+                    content=t("menue_beenden"),
+                    on_click=lambda e: programm_beenden()),
+                    "menue_beenden", "content"),
+            ]),
             ft.Container(width=8),
         ],
     )
@@ -978,12 +1002,38 @@ def main(seite: ft.Page):
     # -----------------------------------------------------------------------
 
     def programm_beenden(icon=None, item=None):
+        """
+        Beendet das Programm. Absichtlich mit Holzhammer am Schluss:
+        Wenn das Fenster nicht schliesst oder ein Faden haengt, muss der
+        Benutzer trotzdem wieder herauskommen - sonst laeuft das Programm
+        unsichtbar weiter und laesst sich nur ueber den Task-Manager
+        beenden.
+        """
         kern.beenden_anfordern()
-        if tray.get("symbol"):
-            tray["symbol"].stop()
-        kern.ui.put(("ende", None))
 
-    tray = {}
+        symbol = tray.get("symbol")
+        if symbol is not None:
+            try:
+                symbol.stop()
+            except Exception as fehler:
+                kern.log(f"Tray liess sich nicht beenden: {fehler}")
+        tray["symbol"] = None
+        tray["laeuft"] = False
+
+        try:
+            seite.window.destroy()
+        except Exception as fehler:
+            kern.log(f"Fenster liess sich nicht schliessen: {fehler}")
+
+        # Notausgang: laeuft der Prozess nach zwei Sekunden noch, hart raus
+        def nachfassen():
+            time.sleep(2)
+            kern.log("Beenden erzwungen")
+            os._exit(0)
+
+        threading.Thread(target=nachfassen, daemon=True).start()
+
+    tray = {"symbol": None, "laeuft": False}
 
     def tray_neu_aufbauen():
         """
@@ -1023,15 +1073,41 @@ def main(seite: ft.Page):
                 pystray.MenuItem(t("menue_beenden"), programm_beenden),
             ))
         tray["symbol"] = symbol
-        threading.Thread(target=symbol.run, daemon=True).start()
+
+        def starten():
+            try:
+                symbol.run()
+            except Exception as fehler:
+                # Im gepackten Programm kann das Tray fehlschlagen. Dann
+                # soll nur das Symbol fehlen, nicht das ganze Programm.
+                tray["laeuft"] = False
+                kern.log(f"Tray-Symbol nicht verfuegbar: {fehler}")
+
+        threading.Thread(target=starten, daemon=True).start()
+        tray["laeuft"] = True
 
     # Beim Schliessen nur verstecken - das Programm wartet weiter auf
     # das Tastenkuerzel
     def fenster_ereignis(e):
-        if e.data == "close":
+        """
+        Flet meldet die Ereignisart in e.type als Aufzaehlungswert, nicht
+        als Text in e.data. Ein Vergleich mit "close" ist nie wahr - dann
+        reagiert das X gar nicht und das Fenster laesst sich nicht mehr
+        schliessen. Darum hier beide Wege pruefen.
+        """
+        art = getattr(getattr(e, "type", None), "value", None) \
+            or getattr(e, "data", None)
+        if art != "close":
+            return
+        if tray.get("laeuft"):
+            # Es gibt ein Tray-Symbol - also nur verstecken und Bescheid
+            # sagen, wo das Programm hin ist.
             seite.window.visible = False
             seite.update()
             melden(t("weg_text"))
+        else:
+            # Kein Tray, kein Rueckweg - dann muss das X wirklich beenden
+            programm_beenden()
 
     seite.window.prevent_close = True
     seite.window.on_event = fenster_ereignis
