@@ -160,20 +160,59 @@ def main(seite: ft.Page):
     # -----------------------------------------------------------------------
 
     ladebalken = ft.ProgressBar(visible=False)
-    antwort = ft.Markdown("", selectable=True,
-                          extension_set=ft.MarkdownExtensionSet.GITHUB_WEB,
-                          md_style_sheet=markdown_stil())
+    # Der Verlauf besteht aus einzelnen Nachrichten statt aus einem
+    # durchgehenden Text. Nur so lassen sich Frage und Antwort optisch
+    # trennen - bei mehreren Rueckfragen verliert man sonst den Faden.
+    verlauf = ft.Column(spacing=14, scroll=ft.ScrollMode.AUTO, expand=True)
+
+    # Alle Markdown-Blocks merken, damit sich die Schriftgroesse
+    # nachtraeglich auf den ganzen Verlauf anwenden laesst
+    markdown_teile = []
+
+    def antwort_block(text):
+        """Antwort der KI: linksbuendig, volle Breite, mit Formatierung."""
+        block = ft.Markdown(
+            text, selectable=True,
+            extension_set=ft.MarkdownExtensionSet.GITHUB_WEB,
+            md_style_sheet=markdown_stil())
+        markdown_teile.append(block)
+        return ft.Row([ft.Container(content=block, expand=True)],
+                      alignment=ft.MainAxisAlignment.START)
+
+    def frage_block(text):
+        """Eigene Frage: rechtsbuendig in einer Sprechblase."""
+        return ft.Row([
+            ft.Container(
+                content=ft.Text(text, size=gr(), selectable=True,
+                                color=ft.Colors.ON_PRIMARY_CONTAINER),
+                bgcolor=ft.Colors.PRIMARY_CONTAINER,
+                padding=ft.Padding.symmetric(horizontal=16, vertical=11),
+                border_radius=ft.BorderRadius(
+                    top_left=16, top_right=16, bottom_left=16, bottom_right=4),
+                margin=ft.Margin.only(left=48)),
+        ], alignment=ft.MainAxisAlignment.END)
+
+    def hinweis_block(text):
+        """Grauer Zwischentext, etwa waehrend des Ladens."""
+        return ft.Row([ft.Text(text, size=gr(-1), opacity=0.6, italic=True)],
+                      alignment=ft.MainAxisAlignment.START)
+
+    def ans_ende():
+        try:
+            verlauf.scroll_to(offset=-1, duration=200)
+        except Exception:
+            pass
     wortkarten = ft.Column(spacing=8)
-    verlaufsspalte = ft.Column([antwort, wortkarten], spacing=16,
-                               scroll=ft.ScrollMode.AUTO, expand=True)
 
     eingabe = ft.TextField(hint_text=t("platzhalter"), border_radius=12,
                            filled=True, expand=True, multiline=False,
                            on_submit=lambda e: nachfragen(eingabe.value))
 
     def bereit_anzeigen():
-        antwort.value = t("bereit",
-                          taste1=kern.konfig["hotkey_erklaeren"].upper())
+        verlauf.controls.clear()
+        markdown_teile.clear()
+        verlauf.controls.append(hinweis_block(
+            t("bereit", taste1=kern.konfig["hotkey_erklaeren"].upper())))
         wortkarten.controls.clear()
 
     def nachfragen(text, beschriftung=None):
@@ -182,10 +221,11 @@ def main(seite: ft.Page):
         if not kern.sitzung.get("bild"):
             melden(t("erst_screenshot"))
             return
-        antwort.value += f"\n\n**{t('du')}:** {beschriftung or text}\n"
+        verlauf.controls.append(frage_block(beschriftung or text))
         eingabe.value = ""
         ladebalken.visible = True
         seite.update()
+        ans_ende()
         kern.arbeit.put(("nachfrage", text))
 
     erklaerknopf = merken(ft.FilledButton(
@@ -197,7 +237,7 @@ def main(seite: ft.Page):
         ft.Container(
             content=ft.Row([erklaerknopf], spacing=8),
             padding=ft.Padding.only(left=16, right=16, top=12)),
-        ft.Container(content=verlaufsspalte, expand=True,
+        ft.Container(content=verlauf, expand=True,
                      padding=ft.Padding.symmetric(horizontal=16, vertical=8)),
         ft.Container(
             content=ft.Row(
@@ -842,7 +882,9 @@ def main(seite: ft.Page):
 
             beschriftungen_auffrischen()
 
-            antwort.md_style_sheet = markdown_stil()
+            stil = markdown_stil()
+            for block in markdown_teile:
+                block.md_style_sheet = stil
             eingabe.hint_text = t("platzhalter")
             eingabe.text_size = gr()
             suche.hint_text = t("woerter_suche")
@@ -891,7 +933,9 @@ def main(seite: ft.Page):
 
                     if befehl == "laden":
                         ladebalken.visible = True
-                        antwort.value = daten
+                        verlauf.controls.clear()
+                        markdown_teile.clear()
+                        verlauf.controls.append(hinweis_block(daten))
                         wortkarten.controls.clear()
                         seite.window.visible = True
                         seite.update()
@@ -909,10 +953,10 @@ def main(seite: ft.Page):
                         text, neu = daten
                         ladebalken.visible = False
                         if neu:
-                            antwort.value = text
+                            verlauf.controls.clear()
+                            markdown_teile.clear()
                             wortkarten.controls.clear()
-                        else:
-                            antwort.value += "\n\n" + text
+                        verlauf.controls.append(antwort_block(text))
                         kern.konfig["zaehler_stand"] = kern.konfig.get(
                             "zaehler_stand", 0)
                         status_aktualisieren()
@@ -922,6 +966,8 @@ def main(seite: ft.Page):
                     elif befehl == "woerter":
                         gefundene, neue = daten
                         wortkarten.controls.clear()
+                        if wortkarten not in verlauf.controls:
+                            verlauf.controls.append(wortkarten)
                         for wort, erklaerung in gefundene:
                             wortkarten.controls.append(ft.Card(
                                 content=ft.Container(padding=12, content=ft.Row([
@@ -938,6 +984,7 @@ def main(seite: ft.Page):
                             melden(t("woerter_neu", anzahl=neue))
                         liste_fuellen()
                         seite.update()
+                        ans_ende()
 
                     elif befehl == "neu":
                         neu_aufbauen()
