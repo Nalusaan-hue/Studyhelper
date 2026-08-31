@@ -41,8 +41,9 @@ SCHNELLFRAGEN = [
      "Gib mir ein konkretes Beispiel aus dem Alltag, das zeigt, worum es "
      "hier geht. Es gelten weiterhin alle Sprachregeln von oben."),
     ("btn_wortfuerwort",
-     "Geh den Text auf dem Bildschirm Satz fuer Satz durch. Schreib jeden "
-     "Satz zuerst genau so hin, wie er auf dem Bildschirm steht, und "
+     "Geh den Hauptinhalt Satz fuer Satz durch - also die Aufgabe oder den "
+     "Text, um den es geht, nicht die Menues oder Seitenleisten. Schreib "
+     "jeden Satz zuerst genau so hin, wie er auf dem Bildschirm steht, und "
      "erklaere ihn direkt darunter in einfachen Worten. Es gelten weiterhin "
      "alle Sprachregeln von oben."),
     ("btn_wastun",
