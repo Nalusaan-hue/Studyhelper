@@ -24,12 +24,19 @@ import urllib.request
 BENUTZER = "Nalusaan-hue"
 PROJEKT = "Studyhelper"
 
-VERSION = "1.0.0"          # die Fassung, die gerade laeuft
+VERSION = "1.3.0"          # die Fassung, die gerade laeuft.
+#                            EINZIGE Stelle fuer die Nummer.
+#                            msi_bauen.py und build_flet.bat lesen sie hier.
 
 ABFRAGE = f"https://api.github.com/repos/{BENUTZER}/{PROJEKT}/releases/latest"
 SEITE = f"https://github.com/{BENUTZER}/{PROJEKT}/releases/latest"
 
 ZEITLIMIT = 6              # Sekunden. Lieber aufgeben als das Programm bremsen
+
+
+def ohne_v(text):
+    """Macht aus 'v1.2.0' die Nummer '1.2.0'. Nur ein fuehrendes v faellt weg."""
+    return re.sub(r"^[vV](?=\d)", "", (text or "").strip())
 
 
 def zahlenfolge(text):
@@ -66,17 +73,23 @@ def pruefen(zeitlimit=ZEITLIMIT):
     try:
         with urllib.request.urlopen(anfrage, timeout=zeitlimit) as antwort:
             daten = json.loads(antwort.read().decode("utf-8"))
-    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError,
-            json.JSONDecodeError, OSError):
+    except Exception:
+        # Kein Netz, GitHub antwortet nicht, Stundenlimit erreicht (60 Abfragen
+        # ohne Anmeldung), Antwort unlesbar: in jedem Fall lieber schweigen als
+        # ein Update melden, das es nicht gibt.
+        return None
+
+    if not isinstance(daten, dict):
         return None
 
     marke = daten.get("tag_name") or daten.get("name") or ""
-    if not marke:
+    if not re.search(r"\d", marke):
+        # Marke ohne jede Zahl (z. B. "Helper") laesst sich nicht vergleichen.
         return None
 
     return {
         "neu": ist_neuer(marke, VERSION),
-        "version": marke.lstrip("vV"),
+        "version": ohne_v(marke),
         "seite": daten.get("html_url") or SEITE,
         "hinweise": (daten.get("body") or "").strip()[:400],
     }

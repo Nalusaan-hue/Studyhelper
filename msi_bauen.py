@@ -31,10 +31,21 @@ from xml.sax.saxutils import escape
 #  Einstellungen
 # ---------------------------------------------------------------------------
 
-NAME = "Schulhelfer"
-VERSION = "1.0.0.0"
+NAME = "Studyhelper"
+# Die Nummer steht nur in aktualisierung.py. Hier wird sie gelesen und auf
+# die vier Stellen gebracht, die Windows fuer ein MSI braucht.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import aktualisierung
+
+
+def vier_stellen(nummer):
+    teile = [t for t in str(nummer).split(".") if t.isdigit()][:4]
+    return ".".join(teile + ["0"] * (4 - len(teile)))
+
+
+VERSION = vier_stellen(aktualisierung.VERSION)
 HERSTELLER = "Schulprojekt"
-EXE = "Schulhelfer.exe"
+EXE = "Studyhelper.exe"
 
 # Diese Kennung darf sich NIE aendern. Windows erkennt daran, dass eine
 # neue Fassung die alte ersetzt statt zusaetzlich installiert zu werden.

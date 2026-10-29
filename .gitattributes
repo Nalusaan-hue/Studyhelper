@@ -1,2 +1,6 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Batchdateien MUESSEN mit CRLF ausgecheckt werden. Mit LF bricht cmd.exe
+# mitten in einer Zeile ab - das hat uns beim Bauen schon Zeit gekostet.
+*.bat text eol=crlf

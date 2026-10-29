@@ -178,6 +178,7 @@ STANDARD = {
         "gemini-3.7-flash",
     ],
     "hotkey_erklaeren": "ctrl+alt+q",
+    "hotkey_bereich": "ctrl+alt+e",
     "nur_aktiver_bildschirm": True,
     "schriftgroesse": 11,
     "farbschema": "grau",
@@ -187,6 +188,12 @@ STANDARD = {
     "max_breite": 1600,
     "zaehler_datum": "",
     "zaehler_stand": 0,
+    # Pro Modell: wie viele Anfragen heute geklappt haben, und welche
+    # Modelle heute in ihr Tageslimit gelaufen sind. Google nennt die
+    # Limits nicht mehr pro Modell, darum wird nicht gerechnet, sondern
+    # beobachtet.
+    "zaehler_modelle": {},
+    "limit_modelle": [],
 }
 
 konfig = dict(STANDARD)
@@ -201,9 +208,18 @@ def konfig_laden():
         except Exception as fehler:
             log(f"Konfiguration unlesbar, nehme Standardwerte: {fehler}")
     # Zaehler taeglich zuruecksetzen
+    tag_pruefen()
+
+
+def tag_pruefen():
+    """Setzt die Tageszaehler zurueck, wenn ein neuer Tag angefangen hat."""
     if konfig.get("zaehler_datum") != date.today().isoformat():
         konfig["zaehler_datum"] = date.today().isoformat()
         konfig["zaehler_stand"] = 0
+        konfig["zaehler_modelle"] = {}
+        konfig["limit_modelle"] = []
+        return True
+    return False
 
 
 def konfig_speichern():
@@ -466,6 +482,18 @@ TEXTE = {
         "farbe_dunkel": "Dunkel",
         "farbe_hell": "Hell",
         "status": "{modell}  ·  {sprache}  ·  {anzahl} Anfragen heute",
+        "menue_ueber": "Über das Programm",
+        "ueber_titel": "Über Studyhelper",
+        "ueber_version": "Fassung",
+        "ueber_anfragen": "Anfragen heute",
+        "ueber_modelle": "Pro Modell heute",
+        "ueber_am_limit": "am Limit",
+        "ueber_hinweis": ("Google nennt kein festes Tageslimit pro Modell. "
+                          "Darum steht hier, was gezählt wurde, und bei "
+                          "welchem Modell das Limit heute schon kam. Ist "
+                          "eines am Limit, nimmt das Programm von selbst "
+                          "das nächste."),
+        "ueber_schliessen": "Schliessen",
         "bereit": "Bereit. Drück {taste1}, dann erkläre ich dir, was auf dem Bildschirm steht.",
         "erst_screenshot": "Mach zuerst einen Screenshot.",
         "du": "Du",
@@ -490,6 +518,10 @@ TEXTE = {
         "ein_sprache": "Sprache des Programms",
         "ein_antwortsprache": "Sprache der Antworten",
         "ein_hotkey1": "Tastenkürzel Erklären",
+        "ein_hotkey2": "Tastenkürzel Bereich aufziehen",
+        "btn_bereich": "Bereich",
+        "bereich_anleitung": ("Zieh mit der Maus ein Rechteck um die Aufgabe. "
+                              "Rechtsklick oder Esc bricht ab."),
         "ein_bildschirm": "Nur den Bildschirm mit dem Mauszeiger fotografieren",
         "ein_modelle": "Modelle (eines pro Zeile, wird der Reihe nach probiert)",
         "ein_speichern": "Speichern",
@@ -601,6 +633,18 @@ TEXTE = {
         "farbe_dunkel": "Oscuro",
         "farbe_hell": "Claro",
         "status": "{modell}  ·  {sprache}  ·  {anzahl} consultas hoy",
+        "menue_ueber": "Acerca del programa",
+        "ueber_titel": "Acerca de Studyhelper",
+        "ueber_version": "Versión",
+        "ueber_anfragen": "Consultas hoy",
+        "ueber_modelle": "Por modelo hoy",
+        "ueber_am_limit": "límite alcanzado",
+        "ueber_hinweis": ("Google ya no indica un límite diario fijo por "
+                          "modelo. Por eso aquí se muestra lo que se ha "
+                          "contado y en qué modelo ya se alcanzó el límite "
+                          "hoy. Si uno está al límite, el programa pasa al "
+                          "siguiente por su cuenta."),
+        "ueber_schliessen": "Cerrar",
         "bereit": "Listo. Pulsa {taste1} y te explico lo que hay en la pantalla.",
         "erst_screenshot": "Primero haz una captura de pantalla.",
         "du": "Tú",
@@ -625,6 +669,10 @@ TEXTE = {
         "ein_sprache": "Idioma del programa",
         "ein_antwortsprache": "Idioma de las respuestas",
         "ein_hotkey1": "Atajo para explicar",
+        "ein_hotkey2": "Atajo para elegir zona",
+        "btn_bereich": "Zona",
+        "bereich_anleitung": ("Arrastra con el ratón un rectángulo alrededor "
+                              "de la tarea. Clic derecho o Esc cancela."),
         "ein_bildschirm": "Capturar solo la pantalla donde está el ratón",
         "ein_modelle": "Modelos (uno por línea, se prueban en orden)",
         "ein_speichern": "Guardar",
@@ -737,6 +785,18 @@ TEXTE = {
         "farbe_dunkel": "Dark",
         "farbe_hell": "Light",
         "status": "{modell}  ·  {sprache}  ·  {anzahl} requests today",
+        "menue_ueber": "About this program",
+        "ueber_titel": "About Studyhelper",
+        "ueber_version": "Version",
+        "ueber_anfragen": "Requests today",
+        "ueber_modelle": "Per model today",
+        "ueber_am_limit": "limit reached",
+        "ueber_hinweis": ("Google no longer states a fixed daily limit per "
+                          "model. So this shows what was counted and which "
+                          "model already hit its limit today. If one is at "
+                          "its limit, the program moves to the next one by "
+                          "itself."),
+        "ueber_schliessen": "Close",
         "bereit": "Ready. Press {taste1} and I will explain what is on your screen.",
         "erst_screenshot": "Take a screenshot first.",
         "du": "You",
@@ -761,6 +821,10 @@ TEXTE = {
         "ein_sprache": "Program language",
         "ein_antwortsprache": "Answer language",
         "ein_hotkey1": "Shortcut for explain",
+        "ein_hotkey2": "Shortcut for picking an area",
+        "btn_bereich": "Area",
+        "bereich_anleitung": ("Drag a rectangle around the task with the "
+                              "mouse. Right-click or Esc cancels."),
         "ein_bildschirm": "Capture only the screen with the mouse pointer",
         "ein_modelle": "Models (one per line, tried in order)",
         "ein_speichern": "Save",
@@ -819,18 +883,26 @@ def aktiver_monitor():
         return None
 
 
-def screenshot_base64():
+def bild_aufnehmen():
+    """Nimmt den Bildschirm auf und gibt das Bild unverkleinert zurueck."""
     bild = ImageGrab.grab(all_screens=True)
 
     if konfig.get("nur_aktiver_bildschirm", True):
         rechteck = aktiver_monitor()
         if rechteck:
-            user32 = ctypes.windll.user32
-            ux = user32.GetSystemMetrics(76)   # SM_XVIRTUALSCREEN
-            uy = user32.GetSystemMetrics(77)   # SM_YVIRTUALSCREEN
-            l, o, re, u = rechteck
-            bild = bild.crop((l - ux, o - uy, re - ux, u - uy))
+            try:
+                user32 = ctypes.windll.user32
+                ux = user32.GetSystemMetrics(76)   # SM_XVIRTUALSCREEN
+                uy = user32.GetSystemMetrics(77)   # SM_YVIRTUALSCREEN
+                l, o, re, u = rechteck
+                bild = bild.crop((l - ux, o - uy, re - ux, u - uy))
+            except Exception as fehler:
+                log(f"Monitorschnitt nicht moeglich: {fehler}")
+    return bild
 
+
+def bild_codieren(bild):
+    """Verkleinert auf die eingestellte Breite und macht PNG in base64."""
     breite = konfig.get("max_breite", 1600)
     if bild.width > breite:
         hoehe = int(bild.height * breite / bild.width)
@@ -840,6 +912,57 @@ def screenshot_base64():
     puffer = io.BytesIO()
     bild.convert("RGB").save(puffer, format="PNG")
     return base64.b64encode(puffer.getvalue()).decode("ascii")
+
+
+def vorschau_bytes(bild, max_breite=1800):
+    """
+    Kleines JPEG, nur zum Anzeigen im Auswahlfenster.
+
+    Absichtlich JPEG und nicht PNG: ein PNG eines ganzen Bildschirms waere
+    mehrere Megabyte gross. Zum Aufziehen eines Rechtecks reicht JPEG. An
+    Gemini geht spaeter der Zuschnitt aus dem Originalbild in PNG, nicht
+    diese Vorschau.
+
+    Rohe Bytes, kein base64: ft.Image nimmt in Flet 0.86 entweder einen
+    Pfad oder bytes. Ein Feld src_base64 gibt es dort nicht mehr.
+    """
+    if bild.width > max_breite:
+        hoehe = int(bild.height * max_breite / bild.width)
+        bild = bild.resize((max_breite, hoehe), Image.LANCZOS)
+    puffer = io.BytesIO()
+    bild.convert("RGB").save(puffer, format="JPEG", quality=70)
+    return puffer.getvalue()
+
+
+MINDESTKANTE = 12          # Pixel. Darunter war es eher ein Klick als ein Zug
+
+
+def bereich_schneiden(bild, anteile):
+    """
+    Schneidet den aufgezogenen Bereich aus dem Bild.
+
+    'anteile' sind Werte zwischen 0 und 1, keine Pixel. So ist es egal, wie
+    gross das Fenster war und auf welcher Bildschirmskalierung (125 %,
+    150 %) gezogen wurde - sonst muesste man DPI umrechnen und haette
+    genau dort den naechsten Fehler.
+    """
+    x0, y0, x1, y1 = anteile
+    x0, x1 = sorted((x0, x1))
+    y0, y1 = sorted((y0, y1))
+    links = max(0, min(bild.width, int(x0 * bild.width)))
+    oben = max(0, min(bild.height, int(y0 * bild.height)))
+    rechts = max(0, min(bild.width, int(x1 * bild.width)))
+    unten = max(0, min(bild.height, int(y1 * bild.height)))
+    if rechts - links < MINDESTKANTE or unten - oben < MINDESTKANTE:
+        log("Bereich zu klein - nehme das ganze Bild")
+        return bild
+    log(f"Bereich {rechts - links}x{unten - oben} aus "
+        f"{bild.width}x{bild.height}")
+    return bild.crop((links, oben, rechts, unten))
+
+
+def screenshot_base64():
+    return bild_codieren(bild_aufnehmen())
 
 
 # ===========================================================================
@@ -991,6 +1114,7 @@ def frage_api(teile):
             letzter = fehler
             if ist_limit_fehler(fehler):
                 log(f"{modell}: Limit erreicht, naechstes Modell")
+                limit_merken(modell)
                 continue
             raise
     raise letzter
@@ -1045,7 +1169,8 @@ def fehlertext(fehler):
 arbeit = queue.Queue()
 ui = queue.Queue()
 beenden = threading.Event()
-sitzung = {"bild": None, "prompt": PROMPT_ERKLAEREN, "verlauf": []}
+sitzung = {"bild": None, "prompt": PROMPT_ERKLAEREN, "verlauf": [],
+           "vollbild": None}
 
 
 # ===========================================================================
@@ -1097,22 +1222,25 @@ def arbeiter():
             if art == "erklaeren":
                 ui.put(("verstecken", None))
                 time.sleep(0.35)
-                sitzung["bild"] = screenshot_base64()
-                sitzung["prompt"] = PROMPT_ERKLAEREN
-                sitzung["verlauf"] = []
-                ui.put(("laden", t("lade_erklaeren")))
+                sitzung["vollbild"] = bild_aufnehmen()
+                erklaerung_holen(bild_codieren(sitzung["vollbild"]))
 
-                text, modell = frage_api(
-                    teile_bauen(sitzung["prompt"], sitzung["bild"], []))
-                log(f"Antwort von {modell}, {len(text)} Zeichen")
-                sitzung["verlauf"].append(("Antwort", text))
-                zaehler_hoch()
+            elif art == "bereich":
+                # Erst aufnehmen, dann das Bild zum Aufziehen zurueckgeben.
+                # Gefragt wird Gemini erst, wenn der Bereich da ist.
+                ui.put(("verstecken", None))
+                time.sleep(0.35)
+                bild = bild_aufnehmen()
+                sitzung["vollbild"] = bild
+                ui.put(("bereich_waehlen", vorschau_bytes(bild)))
 
-                text, woerter = woerter_abtrennen(text)
-                neue = woerter_ergaenzen(woerter)
-                ui.put(("antwort", (text, True)))
-                if woerter:
-                    ui.put(("woerter", (woerter, neue)))
+            elif art == "bereich_fertig":
+                bild = sitzung.get("vollbild")
+                if bild is None:
+                    ui.put(("antwort", (t("erst_screenshot"), False)))
+                    continue
+                erklaerung_holen(
+                    bild_codieren(bereich_schneiden(bild, auftrag[1])))
 
             elif art == "nachfrage":
                 if not sitzung["bild"]:
@@ -1124,7 +1252,7 @@ def arbeiter():
                     sitzung["prompt"], sitzung["bild"],
                     sitzung["verlauf"][:-1], frage))
                 sitzung["verlauf"].append(("Antwort", text))
-                zaehler_hoch()
+                zaehler_hoch(modell)
                 ui.put(("antwort", ("\n" + text, False)))
 
         except Exception as fehler:
@@ -1132,12 +1260,69 @@ def arbeiter():
             ui.put(("antwort", (fehlertext(fehler), True)))
 
 
-def zaehler_hoch():
-    if konfig.get("zaehler_datum") != date.today().isoformat():
-        konfig["zaehler_datum"] = date.today().isoformat()
-        konfig["zaehler_stand"] = 0
+def erklaerung_holen(bild_b64):
+    """
+    Fragt Gemini mit dem uebergebenen Bild und schickt die Antwort an die
+    Oberflaeche. Gemeinsam fuer ganzen Bildschirm und aufgezogenen Bereich -
+    es soll nicht zwei Wege geben, die auseinanderlaufen koennen.
+    """
+    sitzung["bild"] = bild_b64
+    sitzung["prompt"] = PROMPT_ERKLAEREN
+    sitzung["verlauf"] = []
+    ui.put(("laden", t("lade_erklaeren")))
+
+    text, modell = frage_api(teile_bauen(sitzung["prompt"], bild_b64, []))
+    log(f"Antwort von {modell}, {len(text)} Zeichen")
+    sitzung["verlauf"].append(("Antwort", text))
+    zaehler_hoch(modell)
+
+    text, woerter = woerter_abtrennen(text)
+    neue = woerter_ergaenzen(woerter)
+    ui.put(("antwort", (text, True)))
+    if woerter:
+        ui.put(("woerter", (woerter, neue)))
+
+
+def zaehler_hoch(modell=None):
+    tag_pruefen()
     konfig["zaehler_stand"] = konfig.get("zaehler_stand", 0) + 1
+    if modell:
+        pro_modell = dict(konfig.get("zaehler_modelle") or {})
+        pro_modell[modell] = pro_modell.get(modell, 0) + 1
+        konfig["zaehler_modelle"] = pro_modell
     konfig_speichern()
+
+
+def limit_merken(modell):
+    """Haelt fest, dass dieses Modell heute in sein Tageslimit gelaufen ist."""
+    tag_pruefen()
+    liste = list(konfig.get("limit_modelle") or [])
+    if modell not in liste:
+        liste.append(modell)
+        konfig["limit_modelle"] = liste
+        konfig_speichern()
+
+
+def kontingent_zeilen():
+    """
+    Eine Zeile pro Modell fuer den Ueber-Dialog, z.B.
+      gemini-3.5-flash-lite    14
+      gemini-3.7-flash         am Limit
+
+    Es wird bewusst kein Tageslimit angezeigt. Google nennt in seinen
+    Unterlagen keine Zahl mehr pro Modell, und eine erfundene waere
+    schlimmer als keine.
+    """
+    tag_pruefen()
+    pro_modell = konfig.get("zaehler_modelle") or {}
+    am_limit = konfig.get("limit_modelle") or []
+    zeilen = []
+    for modell in konfig.get("modelle") or STANDARD["modelle"]:
+        if modell in am_limit:
+            zeilen.append((modell, t("ueber_am_limit")))
+        else:
+            zeilen.append((modell, str(pro_modell.get(modell, 0))))
+    return zeilen
 
 
 # Windows-Konstanten fuer RegisterHotKey
@@ -1212,7 +1397,8 @@ def hotkey_schleife():
             angemeldet.clear()
 
             for kennung, (feld, modus) in enumerate(
-                    [("hotkey_erklaeren", "erklaeren")], start=1):
+                    [("hotkey_erklaeren", "erklaeren"),
+                     ("hotkey_bereich", "bereich")], start=1):
                 mods, taste = taste_zerlegen(konfig.get(feld, ""))
                 if not taste:
                     log(f"Tastenkuerzel '{konfig.get(feld)}' nicht verstanden")

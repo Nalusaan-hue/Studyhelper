@@ -20,6 +20,7 @@ import webbrowser
 import flet as ft
 import pystray
 
+import aktualisierung
 import kern
 import lernapp
 
@@ -233,9 +234,14 @@ def main(seite: ft.Page):
         expand=True, on_click=lambda e: kern.arbeit.put(("erklaeren",))),
         "btn_erklaeren")
 
+    bereichsknopf = merken(ft.OutlinedButton(
+        t("btn_bereich"), icon=ft.Icons.CROP, height=52,
+        on_click=lambda e: kern.arbeit.put(("bereich",))),
+        "btn_bereich")
+
     erklaeren_ansicht = ft.Column([
         ft.Container(
-            content=ft.Row([erklaerknopf], spacing=8),
+            content=ft.Row([erklaerknopf, bereichsknopf], spacing=8),
             padding=ft.Padding.only(left=16, right=16, top=12)),
         ft.Container(content=verlauf, expand=True,
                      padding=ft.Padding.symmetric(horizontal=16, vertical=8)),
@@ -585,6 +591,9 @@ def main(seite: ft.Page):
             options=[ft.dropdown.Option(s) for s in SCHRIFTGROESSEN])
         tastenfeld = ft.TextField(label=t("ein_hotkey1"), border_radius=10,
                                   value=kern.konfig["hotkey_erklaeren"])
+        tastenfeld2 = ft.TextField(
+            label=t("ein_hotkey2"), border_radius=10,
+            value=kern.konfig.get("hotkey_bereich", "ctrl+alt+e"))
         nur_aktiv = ft.Switch(label=t("ein_bildschirm"),
                               value=kern.konfig.get("nur_aktiver_bildschirm",
                                                     True))
@@ -607,6 +616,8 @@ def main(seite: ft.Page):
             kern.konfig["schriftgroesse"] = int(schriftauswahl.value)
             kern.konfig["hotkey_erklaeren"] = (
                 tastenfeld.value or "ctrl+alt+q").strip().lower()
+            kern.konfig["hotkey_bereich"] = (
+                tastenfeld2.value or "ctrl+alt+e").strip().lower()
             kern.konfig["nur_aktiver_bildschirm"] = bool(nur_aktiv.value)
             kern.konfig["modelle"] = [z.strip() for z in
                                       (modellfeld.value or "").splitlines()
@@ -638,7 +649,7 @@ def main(seite: ft.Page):
                 ft.Text(t("ein_schluessel_hinweis"), size=11, opacity=0.7),
                 ft.Divider(),
                 sprachauswahl, antwortsprache, farbauswahl, schriftauswahl,
-                tastenfeld, nur_aktiv, modellfeld,
+                tastenfeld, tastenfeld2, nur_aktiv, modellfeld,
             ], spacing=14, scroll=ft.ScrollMode.AUTO)),
             actions=[
                 ft.TextButton(t("ein_abbrechen"),
@@ -728,6 +739,57 @@ def main(seite: ft.Page):
                 ], spacing=18, scroll=ft.ScrollMode.AUTO)),
             actions=[ft.FilledButton(t("will_los"), height=48,
                                      on_click=weiter)],
+        )
+        seite.show_dialog(dialog)
+
+    def ueber_zeigen(e=None):
+        """
+        Zeigt Fassung und Verbrauch. Die Fassung sichtbar zu machen ist der
+        Grund, warum ein falscher Update-Hinweis frueher auffaellt: vorher
+        konnte niemand sagen, welche Fassung ueberhaupt lief.
+        """
+        zeilen = []
+        for modell, wert in kern.kontingent_zeilen():
+            zeilen.append(ft.Row([
+                ft.Text(modell, size=gr(-2), expand=True,
+                        no_wrap=False),
+                ft.Text(wert, size=gr(-2), weight=ft.FontWeight.BOLD),
+            ]))
+
+        dialog = ft.AlertDialog(
+            title=ft.Text(t("ueber_titel"), size=gr(4),
+                          weight=ft.FontWeight.BOLD),
+            content=ft.Container(width=420, content=ft.Column([
+                ft.Row([
+                    ft.Text(t("ueber_version"), size=gr(), expand=True),
+                    ft.Text(aktualisierung.VERSION, size=gr(),
+                            weight=ft.FontWeight.BOLD,
+                            selectable=True),
+                ]),
+                ft.Row([
+                    ft.Text(t("ueber_anfragen"), size=gr(), expand=True),
+                    ft.Text(str(kern.konfig.get("zaehler_stand", 0)),
+                            size=gr(), weight=ft.FontWeight.BOLD),
+                ]),
+                ft.Divider(),
+                ft.Text(t("ueber_modelle"), size=gr(-1),
+                        weight=ft.FontWeight.BOLD),
+                ft.Column(zeilen, spacing=4, tight=True),
+                ft.Container(
+                    content=ft.Text(t("ueber_hinweis"), size=gr(-3),
+                                    opacity=0.8),
+                    bgcolor=ft.Colors.SECONDARY_CONTAINER,
+                    padding=12, border_radius=10,
+                    margin=ft.Margin.only(top=8)),
+            ], spacing=10, tight=True, scroll=ft.ScrollMode.AUTO)),
+            actions=[
+                ft.TextButton(t("menue_update"),
+                              on_click=lambda e: threading.Thread(
+                                  target=kern.update_pruefen, args=(False,),
+                                  daemon=True).start()),
+                ft.FilledButton(t("ueber_schliessen"),
+                                on_click=lambda e: seite.pop_dialog()),
+            ],
         )
         seite.show_dialog(dialog)
 
@@ -845,6 +907,10 @@ def main(seite: ft.Page):
                         target=kern.update_pruefen, args=(False,),
                         daemon=True).start()),
                     "menue_update", "content"),
+                merken(ft.PopupMenuItem(
+                    content=t("menue_ueber"),
+                    on_click=ueber_zeigen),
+                    "menue_ueber", "content"),
                 ft.PopupMenuItem(),
                 merken(ft.PopupMenuItem(
                     content=t("menue_beenden"),
@@ -921,6 +987,149 @@ def main(seite: ft.Page):
         threading.Thread(target=tray_neu_aufbauen, daemon=True).start()
 
     # -----------------------------------------------------------------------
+    #  Bereich aufziehen
+    # -----------------------------------------------------------------------
+
+    # Alles, was fuer die Dauer der Auswahl beiseitegelegt wird.
+    auswahl = {"an": False, "appbar": None, "navi": None, "inhalte": None,
+               "polster": None, "start": None, "ende": None,
+               "breite": 0.0, "hoehe": 0.0}
+
+    auswahlrahmen = ft.Container(
+        visible=False,
+        border=ft.Border.all(2, ft.Colors.PRIMARY),
+        bgcolor=ft.Colors.with_opacity(0.18, ft.Colors.PRIMARY),
+    )
+    auswahlhinweis = ft.Container(
+        content=ft.Text("", size=14, weight=ft.FontWeight.BOLD),
+        bgcolor=ft.Colors.with_opacity(0.85, ft.Colors.SURFACE),
+        padding=ft.Padding.symmetric(horizontal=16, vertical=10),
+        border_radius=10,
+    )
+
+    def flaeche_gemessen(e):
+        """
+        Flet meldet hier die tatsaechliche Groesse der Zeichenflaeche.
+
+        Das ist wichtiger, als es aussieht: seite.window.width steht nach
+        dem Umschalten auf Vollbild moeglicherweise noch auf dem alten
+        Wert. Haette man damit gerechnet, waere der aufgezogene Bereich um
+        den Faktor der Fenstergroesse verschoben - und das faellt bei
+        einem kleinen Fenster erst auf, wenn die Antwort schon falsch ist.
+        """
+        if e.width and e.height:
+            auswahl["breite"] = float(e.width)
+            auswahl["hoehe"] = float(e.height)
+
+    def auswahl_masse():
+        """Gemessene Flaeche, notfalls die Fenstergroesse als Rueckfall."""
+        breite = auswahl["breite"] or seite.window.width or 1
+        hoehe = auswahl["hoehe"] or seite.window.height or 1
+        return max(float(breite), 1.0), max(float(hoehe), 1.0)
+
+    def auswahl_starten(bild_daten):
+        auswahl["appbar"] = seite.appbar
+        auswahl["navi"] = seite.navigation_bar
+        auswahl["inhalte"] = list(seite.controls)
+        auswahl["polster"] = seite.padding
+        auswahl["start"] = None
+        auswahl["an"] = True
+
+        auswahlrahmen.visible = False
+        auswahlhinweis.content.value = t("bereich_anleitung")
+
+        seite.appbar = None
+        seite.navigation_bar = None
+        seite.controls.clear()
+        seite.padding = ft.Padding.all(0)
+        seite.add(ft.GestureDetector(
+            on_pan_start=zug_start,
+            on_pan_update=zug_laeuft,
+            on_pan_end=zug_ende,
+            on_secondary_tap=lambda e: auswahl_beenden(),
+            on_size_change=flaeche_gemessen,
+            content=ft.Stack([
+                # Erst hier angelegt: ft.Image verlangt src als
+                # Pflichtangabe, ein leeres Bild vorab gibt es nicht.
+                ft.Image(src=bild_daten, fit=ft.BoxFit.FILL, expand=True),
+                auswahlrahmen,
+                ft.Container(content=auswahlhinweis,
+                             alignment=ft.Alignment.TOP_CENTER,
+                             padding=ft.Padding.only(top=24)),
+            ], expand=True),
+            expand=True,
+        ))
+        seite.window.full_screen = True
+        seite.window.visible = True
+        seite.window.to_front()
+        seite.update()
+
+    def auswahl_beenden():
+        """Raeumt auf. Wird in jedem Fall erreicht, auch beim Abbrechen."""
+        if not auswahl["an"]:
+            return
+        auswahl["an"] = False
+        auswahl["start"] = None
+        auswahlrahmen.visible = False
+        seite.window.full_screen = False
+        seite.controls.clear()
+        seite.padding = auswahl.get("polster")
+        for steuer in auswahl["inhalte"] or []:
+            seite.controls.append(steuer)
+        seite.appbar = auswahl["appbar"]
+        seite.navigation_bar = auswahl["navi"]
+        seite.update()
+
+    def zug_start(e):
+        if not auswahl["an"]:
+            return
+        auswahl["start"] = (e.local_position.x, e.local_position.y)
+        auswahl["ende"] = auswahl["start"]
+        auswahlrahmen.left = e.local_position.x
+        auswahlrahmen.top = e.local_position.y
+        auswahlrahmen.width = 0
+        auswahlrahmen.height = 0
+        auswahlrahmen.visible = True
+        seite.update()
+
+    def zug_laeuft(e):
+        if not auswahl["an"] or auswahl["start"] is None:
+            return
+        x0, y0 = auswahl["start"]
+        x, y = e.local_position.x, e.local_position.y
+        auswahl["ende"] = (x, y)
+        auswahlrahmen.left = min(x0, x)
+        auswahlrahmen.top = min(y0, y)
+        auswahlrahmen.width = abs(x - x0)
+        auswahlrahmen.height = abs(y - y0)
+        auswahlrahmen.update()
+
+    def zug_ende(e):
+        if not auswahl["an"] or auswahl["start"] is None:
+            auswahl_beenden()
+            return
+        x0, y0 = auswahl["start"]
+        x1, y1 = auswahl["ende"] or auswahl["start"]
+        breite, hoehe = auswahl_masse()
+        # Start und Ende direkt verwenden. Aus left+width zurueckzurechnen
+        # ergibt beim Ziehen nach links oben immer wieder den Startpunkt -
+        # der Bereich waere dann leer.
+        anteile = (min(x0, x1) / breite, min(y0, y1) / hoehe,
+                   max(x0, x1) / breite, max(y0, y1) / hoehe)
+        auswahl_beenden()
+        ladebalken.visible = True
+        seite.update()
+        kern.arbeit.put(("bereich_fertig", anteile))
+
+    def auswahl_tastatur(e):
+        # Esc bricht ab. Ohne das waere man im Vollbild gefangen, falls die
+        # Maus nicht mitspielt.
+        if auswahl["an"] and e.key == "Escape":
+            auswahl_beenden()
+
+    seite.on_keyboard_event = auswahl_tastatur
+
+    # -----------------------------------------------------------------------
     #  Meldungen aus dem Kern abholen
     # -----------------------------------------------------------------------
 
@@ -939,6 +1148,10 @@ def main(seite: ft.Page):
                         wortkarten.controls.clear()
                         seite.window.visible = True
                         seite.update()
+
+                    elif befehl == "bereich_waehlen":
+                        ladebalken.visible = False
+                        auswahl_starten(daten)
 
                     elif befehl == "verstecken":
                         seite.window.visible = False

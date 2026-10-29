@@ -1,0 +1,87 @@
+# Baut das Windows-Programm auf einem Rechner von GitHub.
+#
+# Warum das sein muss: SignPath signiert nur Programme, die nachweisbar aus
+# dem oeffentlichen Quellcode gebaut wurden ("built from source code in a
+# verifiable way"). Ein auf dem eigenen Laptop gebautes Programm erfuellt das
+# nicht. Nebeneffekt: die Versionsnummer kann nicht mehr vergessen werden,
+# sie wird aus aktualisierung.py gelesen.
+#
+# Laeuft bei jedem Tag, der mit v anfaengt (also v1.2.1), und auf Knopfdruck
+# unter "Actions".
+
+name: Windows-Programm bauen
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Quellcode holen
+        uses: actions/checkout@v4
+
+      - name: Symlinks erlauben
+        # Flutter braucht das, sonst bricht der Bau mit
+        # "Building with plugins requires symlink support" ab.
+        run: >
+          reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock"
+          /t REG_DWORD /f /v AllowDevelopmentWithoutDevLicense /d 1
+
+      - name: Python einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Flutter einrichten
+        # Feste Fassung. Flet 0.86.5 verlangt genau diese - laedt man sie
+        # nicht vorher, will "flet build" sie interaktiv nachinstallieren
+        # und bleibt ohne Tastatur haengen.
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.8"
+          channel: stable
+
+      - name: Pakete installieren
+        run: pip install -r requirements.txt
+
+      - name: Versionsnummer lesen
+        id: version
+        shell: pwsh
+        run: |
+          $nummer = python -c "import aktualisierung; print(aktualisierung.VERSION)"
+          if (-not $nummer) { throw "Versionsnummer nicht lesbar" }
+          "nummer=$nummer" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Version: $nummer"
+
+      - name: Programm bauen
+        run: >
+          flet build windows
+          --module-name schulhelfer_flet
+          --product "Studyhelper"
+          --company "Schulprojekt"
+          --copyright "Freies Schulprojekt"
+          --build-version ${{ steps.version.outputs.nummer }}
+
+      - name: ZIP packen und Pruefsumme bilden
+        shell: pwsh
+        run: |
+          Compress-Archive -Path build\windows\* -DestinationPath Studyhelper.zip
+          $summe = (Get-FileHash Studyhelper.zip -Algorithm SHA256).Hash
+          "$summe  Studyhelper.zip" | Out-File Studyhelper.zip.sha256 -Encoding ascii
+          Write-Host "SHA256: $summe"
+
+      - name: Ergebnis ablegen
+        uses: actions/upload-artifact@v4
+        with:
+          name: Studyhelper-${{ steps.version.outputs.nummer }}
+          path: |
+            Studyhelper.zip
+            Studyhelper.zip.sha256
+          if-no-files-found: error

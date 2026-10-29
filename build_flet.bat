@@ -182,12 +182,23 @@ echo.
 :pwsh_da
 echo.
 
+REM ---- Versionsnummer aus aktualisierung.py lesen -----------------
+REM  Die Nummer steht nur dort. So kann sie hier nicht veralten.
+set APPVER=
+for /f "usebackq delims=" %%v in (`%PY% -c "import aktualisierung;print(aktualisierung.VERSION)"`) do set APPVER=%%v
+if "%APPVER%"=="" (
+  echo   Die Versionsnummer konnte nicht aus aktualisierung.py gelesen werden.
+  goto fehler
+)
+echo   Version: %APPVER%
+echo.
+
 %FLET% build windows ^
   --module-name schulhelfer_flet ^
-  --product "Schulhelfer" ^
+  --product "Studyhelper" ^
   --company "Schulprojekt" ^
   --copyright "Freies Schulprojekt" ^
-  --build-version 1.0.0
+  --build-version %APPVER%
 if errorlevel 1 goto fehler
 
 if not exist "build\windows" goto nichts_gebaut

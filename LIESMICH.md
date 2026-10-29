@@ -115,6 +115,15 @@ Geschrieben in Python mit [Flet](https://flet.dev). Die gesamte Logik steckt
 in `kern.py` und kennt keine Oberfläche — deshalb liess sich die Oberfläche
 von Tkinter auf Flet umstellen, ohne den Kern anzufassen.
 
+## Signatur und Datenschutz
+
+Wie das Programm gebaut und signiert wird, wer eine Signatur freigibt und
+welche Daten wohin gehen, steht in [SIGNATUR.md](SIGNATUR.md).
+
+Kurz: Ein Bild des Bildschirms geht nur auf Tastendruck an Google. Schlüssel,
+Wörterliste und Einstellungen bleiben auf dem eigenen Rechner. Es gibt keinen
+Server dieses Projekts.
+
 ---
 
 Entstanden als privates Projekt für Mitschülerinnen und Mitschüler, die im
