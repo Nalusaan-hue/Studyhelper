@@ -1,0 +1,25 @@
+# Nur Bau-Einstellungen fuer flet. Absichtlich OHNE [project]-Abschnitt:
+# sobald dort Abhaengigkeiten stehen, benutzt "flet build" die statt der
+# requirements.txt - und dann fehlt im gebauten Programm wieder pystray.
+
+# ---------------------------------------------------------------------------
+#  Festgenagelte Flutter-Pakete
+# ---------------------------------------------------------------------------
+#
+# flet 0.86.5 erzwingt jni 1.0.0, laesst aber die Pakete frei, die darauf
+# aufbauen. Erscheint dort eine neuere Fassung, passt sie nicht mehr zu
+# jni 1.0.0 und der Bau bricht ab mit:
+#
+#   jni_flutter/lib/src/generated_plugin.dart: error G8388A750:
+#   Constant evaluation error
+#
+# Genau das ist am 29.10.2026 in der CI passiert. Die Fassungen unten sind
+# die, mit denen der Bau vom 31.08.2026 nachweislich durchgelaufen ist -
+# abgelesen aus dessen build/flutter/pubspec.lock.
+#
+# Wird hier wieder etwas aufgeloest, das nicht passt: dieselbe Datei als
+# Quelle nehmen und das betroffene Paket hier ergaenzen.
+
+[tool.flet.flutter.pubspec.dependency_overrides]
+jni_flutter = "1.0.2"                 # CI zog 1.0.4+1 -> Bau gescheitert
+shared_preferences_android = "2.4.28"  # CI zog 2.5.4  -> Bau gescheitert
