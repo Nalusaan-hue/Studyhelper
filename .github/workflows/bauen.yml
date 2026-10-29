@@ -23,6 +23,13 @@ jobs:
   windows:
     runs-on: windows-latest
 
+    env:
+      # Die Ausgabe des Runners steht auf cp1252. Jedes Zeichen, das es
+      # dort nicht gibt, liesse den Schritt mit UnicodeEncodeError
+      # abbrechen - genau daran ist der erste Lauf gescheitert.
+      PYTHONIOENCODING: utf-8
+      PYTHONUTF8: "1"
+
     steps:
       - name: Quellcode holen
         uses: actions/checkout@v4
@@ -61,8 +68,14 @@ jobs:
           Write-Host "Version: $nummer"
 
       - name: Programm bauen
+        # --no-rich-output ist hier Pflicht, nicht Geschmack: ohne den
+        # Schalter schreibt flet "Created app shell" mit einem Haken-Emoji,
+        # und das kann die Ausgabe des Runners nicht darstellen. Der
+        # Schalter ersetzt die Emojis durch Klartext und schaltet die
+        # Laufschrift ab, die sonst Tausende Zeilen ins Protokoll spült.
         run: >
           flet build windows
+          --no-rich-output
           --module-name schulhelfer_flet
           --product "Studyhelper"
           --company "Schulprojekt"
