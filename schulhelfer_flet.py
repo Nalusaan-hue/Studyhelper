@@ -11,6 +11,7 @@ Starten:   flet run schulhelfer_flet.py
 Bauen:     flet build windows
 """
 
+import base64
 import os
 import queue
 import threading
@@ -921,7 +922,179 @@ def main(seite: ft.Page):
         ],
     )
     seite.navigation_bar = navigation
-    seite.add(ft.Column([ladebalken, inhalt], expand=True, spacing=0))
+    # -----------------------------------------------------------------------
+    #  Bereich aufziehen
+    # -----------------------------------------------------------------------
+    #
+    # Die Auswahl liegt als zweite Ebene dauerhaft im Fenster und wird nur
+    # ein- und ausgeblendet. Der erste Versuch tauschte stattdessen die
+    # Steuerelemente der Seite aus: Aufziehen und Zuschnitt gingen, aber
+    # das Fenster kam danach nie zurueck. Ein- und Ausblenden kann nicht
+    # halb misslingen.
+
+    # 1x1 Pixel, durchsichtig. ft.Image verlangt beim Anlegen ein Bild,
+    # das richtige kommt erst beim Aufziehen.
+    LEERBILD = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk"
+        "YAAAAAYAAjCB0C8AAAAASUVORK5CYII=")
+
+    auswahl = {"an": False, "start": None, "ende": None,
+               "breite": 0.0, "hoehe": 0.0}
+
+    auswahlbild = ft.Image(src=LEERBILD, fit=ft.BoxFit.FILL, expand=True)
+
+    auswahlrahmen = ft.Container(
+        visible=False,
+        border=ft.Border.all(2, ft.Colors.PRIMARY),
+        bgcolor=ft.Colors.with_opacity(0.18, ft.Colors.PRIMARY),
+    )
+
+    auswahltext = ft.Text("", size=14, weight=ft.FontWeight.BOLD)
+
+    def flaeche_gemessen(e):
+        """
+        Flet meldet hier die echte Groesse der Zeichenflaeche. Daraus wird
+        gerechnet, nicht aus der Fenstergroesse - die stimmt nach einem
+        Groessenwechsel nicht immer sofort.
+        """
+        if e.width and e.height:
+            auswahl["breite"] = float(e.width)
+            auswahl["hoehe"] = float(e.height)
+
+    def auswahl_masse():
+        breite = auswahl["breite"] or seite.window.width or 1
+        hoehe = auswahl["hoehe"] or seite.window.height or 1
+        return max(float(breite), 1.0), max(float(hoehe), 1.0)
+
+    def zug_start(e):
+        if not auswahl["an"]:
+            return
+        auswahl["start"] = (e.local_position.x, e.local_position.y)
+        auswahl["ende"] = auswahl["start"]
+        auswahlrahmen.left = e.local_position.x
+        auswahlrahmen.top = e.local_position.y
+        auswahlrahmen.width = 0
+        auswahlrahmen.height = 0
+        auswahlrahmen.visible = True
+        auswahlrahmen.update()
+
+    def zug_laeuft(e):
+        if not auswahl["an"] or auswahl["start"] is None:
+            return
+        x0, y0 = auswahl["start"]
+        x, y = e.local_position.x, e.local_position.y
+        auswahl["ende"] = (x, y)
+        auswahlrahmen.left = min(x0, x)
+        auswahlrahmen.top = min(y0, y)
+        auswahlrahmen.width = abs(x - x0)
+        auswahlrahmen.height = abs(y - y0)
+        auswahlrahmen.update()
+
+    def zug_ende(e):
+        if not auswahl["an"]:
+            return
+        if auswahl["start"] is None:
+            auswahl_beenden()
+            return
+        x0, y0 = auswahl["start"]
+        x1, y1 = auswahl["ende"] or auswahl["start"]
+        breite, hoehe = auswahl_masse()
+        anteile = (min(x0, x1) / breite, min(y0, y1) / hoehe,
+                   max(x0, x1) / breite, max(y0, y1) / hoehe)
+        auswahl_beenden()
+        ladebalken.visible = True
+        seite.update()
+        kern.arbeit.put(("bereich_fertig", anteile))
+
+    auswahlebene = ft.Container(
+        visible=False,
+        expand=True,
+        content=ft.GestureDetector(
+            on_pan_start=zug_start,
+            on_pan_update=zug_laeuft,
+            on_pan_end=zug_ende,
+            on_secondary_tap=lambda e: auswahl_beenden(),
+            on_size_change=flaeche_gemessen,
+            expand=True,
+            content=ft.Stack([
+                auswahlbild,
+                auswahlrahmen,
+                ft.Container(
+                    left=0, right=0, top=14,
+                    alignment=ft.Alignment.TOP_CENTER,
+                    content=ft.Container(
+                        content=auswahltext,
+                        bgcolor=ft.Colors.with_opacity(0.9, ft.Colors.SURFACE),
+                        padding=ft.Padding.symmetric(horizontal=16, vertical=10),
+                        border_radius=10)),
+            ], expand=True),
+        ),
+    )
+
+    def auswahl_starten(bild_daten):
+        try:
+            auswahl["an"] = True
+            auswahl["start"] = None
+            auswahl["ende"] = None
+            auswahlbild.src = bild_daten
+            auswahlrahmen.visible = False
+            auswahltext.value = t("bereich_anleitung")
+            auswahlebene.visible = True
+            if seite.appbar is not None:
+                seite.appbar.visible = False
+            if seite.navigation_bar is not None:
+                seite.navigation_bar.visible = False
+            try:
+                seite.window.maximized = True      # mehr Flaeche zum Zielen
+            except Exception:
+                pass
+            seite.window.visible = True
+            seite.window.to_front()
+            seite.update()
+            kern.log("Bereichsauswahl gestartet")
+        except Exception as fehler:
+            kern.log(f"Bereichsauswahl konnte nicht starten: {fehler}")
+            auswahl_beenden()
+
+    def auswahl_beenden(e=None):
+        """
+        Blendet die Auswahl wieder aus. Muss unter allen Umstaenden
+        durchlaufen - darum alles einzeln abgesichert.
+        """
+        auswahl["an"] = False
+        auswahl["start"] = None
+        auswahl["ende"] = None
+        for schritt in (
+            lambda: setattr(auswahlrahmen, "visible", False),
+            lambda: setattr(auswahlebene, "visible", False),
+            lambda: setattr(auswahlbild, "src", LEERBILD),
+            lambda: (seite.appbar is not None
+                     and setattr(seite.appbar, "visible", True)),
+            lambda: (seite.navigation_bar is not None
+                     and setattr(seite.navigation_bar, "visible", True)),
+            lambda: setattr(seite.window, "maximized", False),
+        ):
+            try:
+                schritt()
+            except Exception as fehler:
+                kern.log(f"Beim Ausblenden: {fehler}")
+        try:
+            seite.update()
+        except Exception as fehler:
+            kern.log(f"Beim Auffrischen nach der Auswahl: {fehler}")
+
+    def auswahl_tastatur(e):
+        # Esc bricht ab. Ohne das waere man gefangen, falls die Maus
+        # nicht mitspielt.
+        if auswahl["an"] and e.key == "Escape":
+            auswahl_beenden()
+
+    seite.on_keyboard_event = auswahl_tastatur
+
+    seite.add(ft.Stack(
+        [ft.Column([ladebalken, inhalt], expand=True, spacing=0),
+         auswahlebene],
+        expand=True))
 
     def neu_aufbauen():
         """
@@ -986,148 +1159,6 @@ def main(seite: ft.Page):
         # trotzdem schon richtig beschriftet.
         threading.Thread(target=tray_neu_aufbauen, daemon=True).start()
 
-    # -----------------------------------------------------------------------
-    #  Bereich aufziehen
-    # -----------------------------------------------------------------------
-
-    # Alles, was fuer die Dauer der Auswahl beiseitegelegt wird.
-    auswahl = {"an": False, "appbar": None, "navi": None, "inhalte": None,
-               "polster": None, "start": None, "ende": None,
-               "breite": 0.0, "hoehe": 0.0}
-
-    auswahlrahmen = ft.Container(
-        visible=False,
-        border=ft.Border.all(2, ft.Colors.PRIMARY),
-        bgcolor=ft.Colors.with_opacity(0.18, ft.Colors.PRIMARY),
-    )
-    auswahlhinweis = ft.Container(
-        content=ft.Text("", size=14, weight=ft.FontWeight.BOLD),
-        bgcolor=ft.Colors.with_opacity(0.85, ft.Colors.SURFACE),
-        padding=ft.Padding.symmetric(horizontal=16, vertical=10),
-        border_radius=10,
-    )
-
-    def flaeche_gemessen(e):
-        """
-        Flet meldet hier die tatsaechliche Groesse der Zeichenflaeche.
-
-        Das ist wichtiger, als es aussieht: seite.window.width steht nach
-        dem Umschalten auf Vollbild moeglicherweise noch auf dem alten
-        Wert. Haette man damit gerechnet, waere der aufgezogene Bereich um
-        den Faktor der Fenstergroesse verschoben - und das faellt bei
-        einem kleinen Fenster erst auf, wenn die Antwort schon falsch ist.
-        """
-        if e.width and e.height:
-            auswahl["breite"] = float(e.width)
-            auswahl["hoehe"] = float(e.height)
-
-    def auswahl_masse():
-        """Gemessene Flaeche, notfalls die Fenstergroesse als Rueckfall."""
-        breite = auswahl["breite"] or seite.window.width or 1
-        hoehe = auswahl["hoehe"] or seite.window.height or 1
-        return max(float(breite), 1.0), max(float(hoehe), 1.0)
-
-    def auswahl_starten(bild_daten):
-        auswahl["appbar"] = seite.appbar
-        auswahl["navi"] = seite.navigation_bar
-        auswahl["inhalte"] = list(seite.controls)
-        auswahl["polster"] = seite.padding
-        auswahl["start"] = None
-        auswahl["an"] = True
-
-        auswahlrahmen.visible = False
-        auswahlhinweis.content.value = t("bereich_anleitung")
-
-        seite.appbar = None
-        seite.navigation_bar = None
-        seite.controls.clear()
-        seite.padding = ft.Padding.all(0)
-        seite.add(ft.GestureDetector(
-            on_pan_start=zug_start,
-            on_pan_update=zug_laeuft,
-            on_pan_end=zug_ende,
-            on_secondary_tap=lambda e: auswahl_beenden(),
-            on_size_change=flaeche_gemessen,
-            content=ft.Stack([
-                # Erst hier angelegt: ft.Image verlangt src als
-                # Pflichtangabe, ein leeres Bild vorab gibt es nicht.
-                ft.Image(src=bild_daten, fit=ft.BoxFit.FILL, expand=True),
-                auswahlrahmen,
-                ft.Container(content=auswahlhinweis,
-                             alignment=ft.Alignment.TOP_CENTER,
-                             padding=ft.Padding.only(top=24)),
-            ], expand=True),
-            expand=True,
-        ))
-        seite.window.full_screen = True
-        seite.window.visible = True
-        seite.window.to_front()
-        seite.update()
-
-    def auswahl_beenden():
-        """Raeumt auf. Wird in jedem Fall erreicht, auch beim Abbrechen."""
-        if not auswahl["an"]:
-            return
-        auswahl["an"] = False
-        auswahl["start"] = None
-        auswahlrahmen.visible = False
-        seite.window.full_screen = False
-        seite.controls.clear()
-        seite.padding = auswahl.get("polster")
-        for steuer in auswahl["inhalte"] or []:
-            seite.controls.append(steuer)
-        seite.appbar = auswahl["appbar"]
-        seite.navigation_bar = auswahl["navi"]
-        seite.update()
-
-    def zug_start(e):
-        if not auswahl["an"]:
-            return
-        auswahl["start"] = (e.local_position.x, e.local_position.y)
-        auswahl["ende"] = auswahl["start"]
-        auswahlrahmen.left = e.local_position.x
-        auswahlrahmen.top = e.local_position.y
-        auswahlrahmen.width = 0
-        auswahlrahmen.height = 0
-        auswahlrahmen.visible = True
-        seite.update()
-
-    def zug_laeuft(e):
-        if not auswahl["an"] or auswahl["start"] is None:
-            return
-        x0, y0 = auswahl["start"]
-        x, y = e.local_position.x, e.local_position.y
-        auswahl["ende"] = (x, y)
-        auswahlrahmen.left = min(x0, x)
-        auswahlrahmen.top = min(y0, y)
-        auswahlrahmen.width = abs(x - x0)
-        auswahlrahmen.height = abs(y - y0)
-        auswahlrahmen.update()
-
-    def zug_ende(e):
-        if not auswahl["an"] or auswahl["start"] is None:
-            auswahl_beenden()
-            return
-        x0, y0 = auswahl["start"]
-        x1, y1 = auswahl["ende"] or auswahl["start"]
-        breite, hoehe = auswahl_masse()
-        # Start und Ende direkt verwenden. Aus left+width zurueckzurechnen
-        # ergibt beim Ziehen nach links oben immer wieder den Startpunkt -
-        # der Bereich waere dann leer.
-        anteile = (min(x0, x1) / breite, min(y0, y1) / hoehe,
-                   max(x0, x1) / breite, max(y0, y1) / hoehe)
-        auswahl_beenden()
-        ladebalken.visible = True
-        seite.update()
-        kern.arbeit.put(("bereich_fertig", anteile))
-
-    def auswahl_tastatur(e):
-        # Esc bricht ab. Ohne das waere man im Vollbild gefangen, falls die
-        # Maus nicht mitspielt.
-        if auswahl["an"] and e.key == "Escape":
-            auswahl_beenden()
-
-    seite.on_keyboard_event = auswahl_tastatur
 
     # -----------------------------------------------------------------------
     #  Meldungen aus dem Kern abholen
@@ -1141,6 +1172,7 @@ def main(seite: ft.Page):
                     befehl, daten = kern.ui.get_nowait()
 
                     if befehl == "laden":
+                        auswahl_beenden()
                         ladebalken.visible = True
                         verlauf.controls.clear()
                         markdown_teile.clear()
@@ -1163,6 +1195,7 @@ def main(seite: ft.Page):
                         seite.update()
 
                     elif befehl == "antwort":
+                        auswahl_beenden()
                         text, neu = daten
                         ladebalken.visible = False
                         if neu:
