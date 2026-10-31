@@ -115,6 +115,27 @@ Geschrieben in Python mit [Flet](https://flet.dev). Die gesamte Logik steckt
 in `kern.py` und kennt keine Oberfläche — deshalb liess sich die Oberfläche
 von Tkinter auf Flet umstellen, ohne den Kern anzufassen.
 
+## Signatur und Datenschutz
+
+Das Programm soll über die [SignPath Foundation](https://signpath.org/)
+signiert werden, die Open-Source-Projekten das Signieren kostenlos
+ermöglicht. Die vollständige Signatur-Richtlinie — wer eine Signatur
+freigibt, wie gebaut wird und welche Daten wohin gehen — steht in
+[SIGNATUR.md](SIGNATUR.md).
+
+> Solange die Bewerbung bei der SignPath Foundation nicht bewilligt ist,
+> sind die veröffentlichten Dateien **nicht signiert**. Windows zeigt dann
+> die übliche Warnung bei Programmen ohne gekauftes Zertifikat. Das ist
+> keine Virusmeldung.
+
+Kurz zu den Daten: Ein Bild des Bildschirms geht nur auf Tastendruck an
+Google. Schlüssel, Wörterliste und Einstellungen bleiben auf dem eigenen
+Rechner. Es gibt keinen Server dieses Projekts.
+
+Gebaut wird ausschliesslich automatisch auf GitHub Actions aus dem
+Quellcode in diesem Verzeichnis, siehe
+[.github/workflows/bauen.yml](.github/workflows/bauen.yml).
+
 ---
 
 Entstanden als privates Projekt für Mitschülerinnen und Mitschüler, die im
